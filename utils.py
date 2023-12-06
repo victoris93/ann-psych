@@ -65,17 +65,23 @@ class GradLoader(Dataset):
         return train_dataset, test_dataset
 
 def test(model, test_loader, num_class=3, use_cpu=True):
+    print("TESTING")
     mean_correct = []
+    print("DONE")
     class_acc = np.zeros((num_class, 3))
+    print("DONE")
     classifier = model.eval()
+    print("DONE")
 
     for points, target in tqdm(test_loader):
+        points = points.transpose(2, 1)
+        print("DONE")
         if not use_cpu:
             points, target = points.cuda(), target.cuda()
-
-        points = points.transpose(2, 1)
         pred, _ = classifier(points)
+        print("DONE")
         pred_choice = pred.data.max(1)[1]
+        print("DONE")
 
         for cat in np.unique(target.cpu()):
             classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()

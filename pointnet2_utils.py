@@ -74,9 +74,13 @@ def farthest_point_sample(xyz, npoint):
     distance = torch.ones(B, N).to(device) * 1e10
     farthest = torch.randint(0, N, (B,), dtype=torch.long).to(device)
     batch_indices = torch.arange(B, dtype=torch.long).to(device)
+    print("xyz shape", xyz.shape)
+    print("farthest shape", farthest.shape)
     for i in range(npoint):
         centroids[:, i] = farthest
-        centroid = xyz[batch_indices, farthest, :].view(B, 1, 3)
+        temp = xyz[batch_indices, farthest, :]
+        print("xyz Shape after indexing:", temp.shape)
+        centroid = temp.view(B, 1, 3)
         dist = torch.sum((xyz - centroid) ** 2, -1)
         mask = dist < distance
         distance[mask] = dist[mask]
@@ -207,7 +211,6 @@ class PointNetSetAbstractionMsg(nn.Module):
         super(PointNetSetAbstractionMsg, self).__init__()
         self.npoint = npoint
         self.radius_list = radius_list
-        print("radius_list: ", radius_list)
         self.nsample_list = nsample_list
         self.conv_blocks = nn.ModuleList()
         self.bn_blocks = nn.ModuleList()
@@ -251,7 +254,6 @@ class PointNetSetAbstractionMsg(nn.Module):
                 grouped_points = grouped_xyz
 
             grouped_points = grouped_points.permute(0, 3, 2, 1)  # [B, D, K, S]
-            print("grouped_points.shape", grouped_points.shape)
             for j in range(len(self.conv_blocks[i])):
                 conv = self.conv_blocks[i][j]
                 bn = self.bn_blocks[i][j]
