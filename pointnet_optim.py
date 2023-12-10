@@ -75,7 +75,7 @@ def define_model(trial, num_class, normal_channel=False, use_cpu = False):
 def objective(trial, train_dataset, test_dataset, num_class, use_cpu=False, num_epochs=200):
     model = define_model(trial, num_class, use_cpu=use_cpu)
 
-    batch_size = trial.suggest_categorical('batch_size', [10, 20, 40, 80, 160])
+    batch_size = trial.suggest_categorical('batch_size', [10, 20, 40, 80])
     criterion_name = trial.suggest_categorical('loss_function', ['nll_loss', 'cross_entropy'])
     if criterion_name == 'cross_entropy':
         loss_fn = F.cross_entropy
@@ -106,8 +106,9 @@ def objective(trial, train_dataset, test_dataset, num_class, use_cpu=False, num_
             momentum=trial.suggest_float('sgd_momentum', 0.5, 0.99)
         )
 
-    best_val_loss = float('inf')
+    # best_val_loss = float('inf')
     best_instance_acc = 0.0
+    best_val_acc = 0.0
     best_class_acc = 0.0
     epoch_instance_accs = []
     epoch_class_accs = []
@@ -133,8 +134,6 @@ def objective(trial, train_dataset, test_dataset, num_class, use_cpu=False, num_
 
             pred, trans_feat = model(points)   
             loss = criterion(pred, target, trans_feat)
-            print("pred shape", pred.shape)
-            print("target shape", target.shape)
             loss.backward()
             optimizer.step()
 
@@ -147,43 +146,45 @@ def objective(trial, train_dataset, test_dataset, num_class, use_cpu=False, num_
 
         # Validation loop - calculate instance and class accuracies
         print("Validation Loop...")
+        mean_val_instance_acc = []
         with torch.no_grad():
             val_instance_acc, val_class_acc = test(model, val_loader, num_class=num_class, use_cpu=use_cpu)
             epoch_class_accs.append(val_class_acc)
+            mean_val_instance_acc.append(val_instance_acc)
 
-            if val_instance_acc > best_instance_acc:
-                best_instance_acc = val_instance_acc
-            if val_class_acc > best_class_acc:
-                best_class_acc = val_class_acc
+            # if val_instance_acc > best_instance_acc:
+            #     best_instance_acc = val_instance_acc
+            # if val_class_acc > best_class_acc:
+            #     best_class_acc = val_class_acc
 
             # Save the model if it has the best validation loss so far
-            avg_val_loss = np.mean([criterion(model(data), target).item() for data, target in val_loader])
-            if avg_val_loss < best_val_loss:
-                best_val_loss = avg_val_loss
-                best_model_state = model.state_dict()
-                best_hyperparams = {
-                    'batch_size': batch_size,
-                    'loss_function': criterion,
-                    'optimizer': optimizer_name,
-                    'learning_rate': trial.params['learning_rate'] if optimizer_name == 'Adam' else trial.params['sgd_lr'],
-                    'dropout_rate': trial.params['dropout_rate'],
-                    'radius_list': trial.params['radius_list']
-                }
-
-    # Calculate mean instance and class accuracy across epochs
-    mean_instance_acc = np.mean(epoch_instance_accs)
-    mean_class_acc = np.mean(epoch_class_accs)
-
-    # Print the mean accuracies
-    print(f"Mean Instance Accuracy across epochs: {mean_instance_acc}")
-    print(f"Mean Class Accuracy across epochs: {mean_class_acc}")
-
-    # Save the best model at the end of the trials
+    mean_val_instance_acc = np.mean(mean_val_instance_acc)
+    if mean_val_instance_acc > best_val_acc:
+        best_val_acc = mean_val_instance_acc
+        best_model_state = model.state_dict()
+        best_hyperparams = {
+            'batch_size': batch_size,
+            'loss_function': criterion_name,
+            'optimizer': optimizer_name,
+            'learning_rate': trial.params['adam_lr'] if optimizer_name == 'Adam' else trial.params['sgd_lr'],
+            'dropout_rate': trial.params['dropout_rate'],
+            'radius_list': trial.params['radius_list'],
+            'sgd_momentum': trial.params['sgd_momentum'] if optimizer_name == 'SGD' else 'NAN',
+            'adam_beta1': trial.params['adam_beta1'] if optimizer_name == 'Adam' else 'NAN',
+            'adam_beta2': trial.params['adam_beta2'] if optimizer_name == 'Adam' else 'NAN'
+        }
     if best_model_state is not None:
         torch.save(best_model_state, 'best_model/best_optimized_model.pth')
+        with open('best_model/best_hyperparameters.json', 'w') as f:
+            json.dump(best_hyperparams, f)
 
+    # Calculate mean instance and class accuracy across epochs
+    mean_class_acc = np.mean(epoch_class_accs)
+    
+    # Print the mean accuracies
+    print(f"Mean Instance Accuracy across epochs: {mean_val_instance_acc}")
+    print(f"Mean Class Accuracy across epochs: {mean_class_acc}")
 
-    return best_val_loss
 def main():
     study = optuna.create_study(direction='minimize')
     study.optimize(lambda trial: objective(trial, train_dataset, test_dataset, num_class = 2, use_cpu=False, num_epochs=200), n_trials=100)
